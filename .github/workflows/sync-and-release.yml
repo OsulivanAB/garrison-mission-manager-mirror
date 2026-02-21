@@ -3,7 +3,7 @@ name: Sync upstream and publish WowUp release (on any change)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 0,4,8,12,16,20 * * *"
 
 permissions:
   contents: write
