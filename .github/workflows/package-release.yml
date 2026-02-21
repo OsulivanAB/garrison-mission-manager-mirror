@@ -3,7 +3,8 @@ name: Package addon + publish release
 on:
   workflow_dispatch:
   push:
-    branches: [ "upstream" ]   # run when the mirror updates
+    tags:
+      - "*"   # only run when a tag is pushed (mirrored from upstream)
 
 permissions:
   contents: write
@@ -12,51 +13,16 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout mirrored upstream branch
+      - name: Checkout the tagged commit
         uses: actions/checkout@v4
         with:
-          ref: upstream
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Determine release tag (newest tag or snapshot)
-        id: tag
-        run: |
-          set -euo pipefail
-          latest_tag="$(git tag --sort=-creatordate | head -n 1 || true)"
-          if [ -n "${latest_tag}" ]; then
-            tag="${latest_tag}"
-          else
-            sha="$(git rev-parse --short HEAD)"
-            tag="snapshot-${sha}"
-          fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
-      - name: Create snapshot tag (only if needed)
-        if: startsWith(steps.tag.outputs.tag, 'snapshot-')
-        run: |
-          set -euo pipefail
-          git tag "${{ steps.tag.outputs.tag }}"
-          git push origin "${{ steps.tag.outputs.tag }}"
-
-      - name: Skip if release already exists
-        id: exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          tag="${{ steps.tag.outputs.tag }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Build WowUp-compatible zip
-        if: steps.exists.outputs.exists != 'true'
         run: |
           set -euo pipefail
           addon="GarrisonMissionManager"
+
           rm -rf dist
           mkdir -p "dist/${addon}"
 
@@ -69,11 +35,8 @@ jobs:
           cd dist
           zip -r "../${addon}.zip" "${addon}"
 
-      - name: Create GitHub Release with zip asset
-        if: steps.exists.outputs.exists != 'true'
+      - name: Create or update GitHub Release with zip asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
           files: |
             GarrisonMissionManager.zip
