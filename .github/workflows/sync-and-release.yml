@@ -16,10 +16,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
           fetch-tags: true
+          persist-credentials: false
 
-      # Mirror upstream into a dedicated branch that can be overwritten freely
       - name: Sync upstream -> upstream (force) incl tags
         uses: repo-sync/github-sync@v2
         with:
@@ -45,7 +44,7 @@ jobs:
           echo "up_sha=${up_sha}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Skip if we've already released this upstream commit
+      - name: Skip if we've already tagged this upstream commit
         id: skip
         run: |
           set -euo pipefail
@@ -56,14 +55,26 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create and push tag for this upstream commit
+      - name: Create and push tag for this upstream commit (PAT auth)
         if: steps.skip.outputs.skip != 'true'
+        env:
+          PAT: ${{ secrets.PAT }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           tag="${{ steps.meta.outputs.tag }}"
           up_sha="${{ steps.meta.outputs.up_sha }}"
+
+          # Identity for annotated tags
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Authenticate pushes with PAT (since persist-credentials is false)
+          git remote set-url origin "https://x-access-token:${PAT}@github.com/${REPO}.git"
+
+          # Create + push tag
           git tag -a "$tag" "$up_sha" -m "Mirror upstream commit $up_sha"
-          git push origin "$tag"
+          git push origin "refs/tags/$tag"
 
       - name: Check out upstream commit into a worktree for packaging
         if: steps.skip.outputs.skip != 'true'
