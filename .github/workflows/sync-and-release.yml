@@ -1,0 +1,97 @@
+name: Sync upstream and publish WowUp release (on any change)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync_and_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout automation branch (contains workflows)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          fetch-tags: true
+
+      # Mirror upstream into a dedicated branch that can be overwritten freely
+      - name: Sync upstream -> upstream (force) incl tags
+        uses: repo-sync/github-sync@v2
+        with:
+          source_repo: "rowaasr13/garrison-mission-manager"
+          source_branch: "master"
+          destination_branch: "upstream"
+          github_token: ${{ secrets.PAT }}
+          sync_tags: "true"
+
+      - name: Fetch updated upstream branch + tags
+        run: |
+          set -euo pipefail
+          git fetch origin upstream --force
+          git fetch --tags --force
+
+      - name: Compute upstream commit + mirror tag
+        id: meta
+        run: |
+          set -euo pipefail
+          up_sha="$(git rev-parse origin/upstream)"
+          short="$(git rev-parse --short=8 origin/upstream)"
+          tag="upstream-${short}"
+          echo "up_sha=${up_sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if we've already released this upstream commit
+        id: skip
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag for this upstream commit
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          up_sha="${{ steps.meta.outputs.up_sha }}"
+          git tag -a "$tag" "$up_sha" -m "Mirror upstream commit $up_sha"
+          git push origin "$tag"
+
+      - name: Check out upstream commit into a worktree for packaging
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          up_sha="${{ steps.meta.outputs.up_sha }}"
+          git worktree add --force _pkg "$up_sha"
+
+      - name: Build WowUp-compatible zip
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          addon="GarrisonMissionManager"
+          rm -rf dist
+          mkdir -p "dist/${addon}"
+
+          rsync -av \
+            --exclude ".git" \
+            --exclude ".github" \
+            ./_pkg/ "dist/${addon}/"
+
+          (cd dist && zip -r "../${addon}.zip" "${addon}")
+
+      - name: Create GitHub Release with zip asset
+        if: steps.skip.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          files: |
+            GarrisonMissionManager.zip
