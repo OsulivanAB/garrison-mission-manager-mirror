@@ -2,9 +2,14 @@ name: Package addon + publish release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "*"   # only run when a tag is pushed (mirrored from upstream)
+    inputs:
+      tag:
+        description: "Tag to release (must exist in the repo)"
+        required: true
+      ref:
+        description: "Ref/branch to package from (usually upstream)"
+        required: true
+        default: "upstream"
 
 permissions:
   contents: write
@@ -13,16 +18,23 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout the tagged commit
+      - name: Checkout the source ref
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
+          fetch-tags: true
+
+      - name: Ensure tag exists locally
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          git rev-parse "${{ inputs.tag }}" >/dev/null
 
       - name: Build WowUp-compatible zip
         run: |
           set -euo pipefail
           addon="GarrisonMissionManager"
-
           rm -rf dist
           mkdir -p "dist/${addon}"
 
@@ -38,5 +50,7 @@ jobs:
       - name: Create or update GitHub Release with zip asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
           files: |
             GarrisonMissionManager.zip
