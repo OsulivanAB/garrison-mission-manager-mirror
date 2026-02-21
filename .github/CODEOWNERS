@@ -1,0 +1,31 @@
+# ===============================
+# Default ownership
+# ===============================
+# You own everything by default
+* @OsulivanAB
+
+
+# ===============================
+# Critical automation areas
+# ===============================
+# GitHub Actions workflows (highest sensitivity)
+.github/workflows/* @OsulivanAB
+
+# GitHub configuration
+.github/* @OsulivanAB
+
+# Any future scripts used for packaging/releasing
+scripts/* @OsulivanAB
+
+
+# ===============================
+# Release artifacts (if ever committed)
+# ===============================
+dist/* @OsulivanAB
+
+
+# ===============================
+# Documentation (optional relaxation example)
+# Uncomment if you ever add collaborators
+# ===============================
+# docs/* @OsulivanAB @CollaboratorName
